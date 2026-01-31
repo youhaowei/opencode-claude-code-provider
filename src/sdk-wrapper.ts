@@ -40,46 +40,22 @@ function filterSettings(options?: Record<string, unknown>): ClaudeCodeSettings |
   return Object.keys(filtered).length > 0 ? (filtered as ClaudeCodeSettings) : undefined;
 }
 
-/**
- * Converts V3 finish reason (object) to V2 format (string)
- */
 function convertFinishReason(reason: unknown): string {
-  if (typeof reason === "string") {
-    return reason;
-  }
+  if (typeof reason === "string") return reason;
   if (reason && typeof reason === "object" && "unified" in reason) {
     return (reason as { unified: string }).unified;
   }
   return "other";
 }
 
-/**
- * Transforms a V3 stream part to V2 format
- * Main changes:
- * - finishReason: { unified: string, raw: string } → string
- */
+function normalizeFinishReason(obj: Record<string, unknown>): Record<string, unknown> {
+  if (!("finishReason" in obj)) return obj;
+  return { ...obj, finishReason: convertFinishReason(obj.finishReason) };
+}
+
 function transformStreamPart(part: unknown): unknown {
-  if (!part || typeof part !== "object") {
-    return part;
-  }
-  
-  const p = part as Record<string, unknown>;
-  
-  if (p.type === "finish" && p.finishReason !== undefined) {
-    return {
-      ...p,
-      finishReason: convertFinishReason(p.finishReason),
-    };
-  }
-  
-  if (p.type === "finish-step" && p.finishReason !== undefined) {
-    return {
-      ...p,
-      finishReason: convertFinishReason(p.finishReason),
-    };
-  }
-  
-  return part;
+  if (!part || typeof part !== "object") return part;
+  return normalizeFinishReason(part as Record<string, unknown>);
 }
 
 /**
@@ -107,58 +83,66 @@ function createV2CompatibleStream(v3Stream: ReadableStream): ReadableStream {
   });
 }
 
-/**
- * Wraps a V3 language model to return V2-compatible streams
- */
-function wrapLanguageModel(model: any): any {
-  const originalDoStream = model.doStream.bind(model);
-  const originalDoGenerate = model.doGenerate?.bind(model);
+function normalizeGenerateResult(result: unknown): unknown {
+  if (!result || typeof result !== "object") return result;
   
-  return {
-    ...model,
-    get specificationVersion() {
-      return "v2";
-    },
-    async doStream(options: any) {
-      const result = await originalDoStream(options);
-      return {
-        ...result,
-        stream: createV2CompatibleStream(result.stream),
-      };
-    },
-    async doGenerate(options: any) {
-      if (!originalDoGenerate) {
-        throw new Error("doGenerate not supported");
-      }
-      const result = await originalDoGenerate(options);
-      if (result.finishReason !== undefined) {
-        return {
-          ...result,
-          finishReason: convertFinishReason(result.finishReason),
-        };
-      }
-      return result;
-    },
-  };
+  const normalized = normalizeFinishReason(result as Record<string, unknown>);
+  
+  if (Array.isArray((normalized as any).steps)) {
+    return {
+      ...normalized,
+      steps: (normalized as any).steps.map((step: unknown) =>
+        step && typeof step === "object" ? normalizeFinishReason(step as Record<string, unknown>) : step
+      ),
+    };
+  }
+  
+  return normalized;
 }
 
-export function createClaudeCode(_options?: Record<string, unknown>) {
+function wrapLanguageModel<T extends object>(model: T): T {
+  return new Proxy(model, {
+    get(target, prop, receiver) {
+      if (prop === "specificationVersion") return "v2";
+
+      if (prop === "doStream") {
+        const original = (target as any).doStream.bind(target);
+        return async (options: any) => {
+          const result = await original(options);
+          return { ...result, stream: createV2CompatibleStream(result.stream) };
+        };
+      }
+
+      if (prop === "doGenerate" && (target as any).doGenerate) {
+        const original = (target as any).doGenerate.bind(target);
+        return async (options: any) => {
+          const result = await original(options);
+          return normalizeGenerateResult(result);
+        };
+      }
+
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+}
+
+export function createClaudeCode(options?: Parameters<typeof originalCreateClaudeCode>[0]) {
   const claudeCliPath = findClaudeCli();
   
   const provider = originalCreateClaudeCode({
+    ...options,
     defaultSettings: {
+      ...options?.defaultSettings,
       pathToClaudeCodeExecutable: claudeCliPath,
     },
   });
   
   return {
     languageModel(modelId: string, modelOptions?: Record<string, unknown>) {
-      const model = provider.languageModel(modelId, filterSettings(modelOptions));
-      return wrapLanguageModel(model);
+      return wrapLanguageModel(provider.languageModel(modelId, filterSettings(modelOptions)));
     },
     chat(modelId: string, modelOptions?: Record<string, unknown>) {
-      const model = provider.chat(modelId, filterSettings(modelOptions));
-      return wrapLanguageModel(model);
+      return wrapLanguageModel(provider.chat(modelId, filterSettings(modelOptions)));
     },
   };
 }

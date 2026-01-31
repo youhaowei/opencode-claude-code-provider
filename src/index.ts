@@ -2,10 +2,9 @@ import { type Plugin, tool } from "@opencode-ai/plugin";
 import type { Event, Config } from "@opencode-ai/sdk";
 import { createClaudeCode, type ClaudeCodeProvider } from "ai-sdk-provider-claude-code";
 import { z } from "zod";
-import { existsSync, realpathSync } from "fs";
-import { join, dirname } from "path";
+import { existsSync } from "fs";
+import { join } from "path";
 import { homedir } from "os";
-import { fileURLToPath } from "url";
 
 const CLAUDE_CODE_MODELS = ["sonnet", "opus", "haiku"] as const;
 type ClaudeCodeModel = (typeof CLAUDE_CODE_MODELS)[number];
@@ -17,13 +16,7 @@ function isClaudeLoggedIn(): boolean {
 }
 
 function getSdkWrapperPath(): string {
-  try {
-    const currentFile = fileURLToPath(import.meta.url);
-    const currentDir = dirname(realpathSync(currentFile));
-    return `file://${join(currentDir, "sdk-wrapper.js")}`;
-  } catch {
-    return `file://${join(homedir(), "Projects", "opencode-claude-code-provider", "dist", "sdk-wrapper.js")}`;
-  }
+  return new URL("./sdk-wrapper.js", import.meta.url).href;
 }
 
 const CLAUDE_CODE_PROVIDER_CONFIG = {
@@ -41,8 +34,7 @@ const CLAUDE_CODE_PROVIDER_CONFIG = {
       cost: {
         input: 0,
         output: 0,
-        cache_read: 0,
-        cache_write: 0,
+        cache: { read: 0, write: 0 },
       },
       limit: {
         context: 200000,
@@ -59,8 +51,7 @@ const CLAUDE_CODE_PROVIDER_CONFIG = {
       cost: {
         input: 0,
         output: 0,
-        cache_read: 0,
-        cache_write: 0,
+        cache: { read: 0, write: 0 },
       },
       limit: {
         context: 200000,
@@ -77,8 +68,7 @@ const CLAUDE_CODE_PROVIDER_CONFIG = {
       cost: {
         input: 0,
         output: 0,
-        cache_read: 0,
-        cache_write: 0,
+        cache: { read: 0, write: 0 },
       },
       limit: {
         context: 200000,
@@ -130,10 +120,7 @@ const ClaudeCodeProviderPlugin: Plugin = async () => {
             model.cost = {
               input: 0,
               output: 0,
-              cache: {
-                read: 0,
-                write: 0,
-              },
+              cache: { read: 0, write: 0 },
             };
           }
         }
