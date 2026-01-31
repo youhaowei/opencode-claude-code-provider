@@ -1,0 +1,43 @@
+{
+  "name": "opencode-claude-code-provider",
+  "version": "1.0.0",
+  "description": "OpenCode plugin for Claude Code (Agent SDK) provider - use Claude Code's subscription without API keys",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./sdk": {
+      "import": "./dist/sdk-wrapper.js",
+      "require": "./dist/sdk-wrapper.js"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --external @opencode-ai/plugin --external @opencode-ai/sdk --external zod && bun build ./src/sdk-wrapper.ts --outfile ./dist/sdk-wrapper.js --target node",
+    "dev": "bun --watch ./src/index.ts",
+    "prepare": "bun run build",
+    "link": "bun run scripts/build-and-link.ts"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "claude-code",
+    "anthropic",
+    "agent-sdk"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.27",
+    "@opencode-ai/plugin": "^1.1.47",
+    "ai": "^6.0.64",
+    "ai-sdk-provider-claude-code": "^3.3.4"
+  }
+}
